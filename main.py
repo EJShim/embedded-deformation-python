@@ -23,6 +23,7 @@ pointBuffer = np.array([
         [5, 0, 0],        
     ], dtype=np.float64)
 polydata = vtk.vtkPolyData()
+cubeGlyph = []
 
 def MakeSphereActor(polydata):
     mapper = vtk.vtkOpenGLSphereMapper()
@@ -63,14 +64,31 @@ def MouseMoveCallback(obj, r):
     eventPosition = obj.GetEventPosition()
     picker.Pick(float(eventPosition[0]),float(eventPosition[1]),0.0,ren)    
 
+    #Update Point
     pos = picker.GetPickPosition()
     pointBuffer[pickedId][0] = pos[0]
     pointBuffer[pickedId][1] = pos[1]
     pointBuffer[pickedId][2] = pos[2]
-
     polydata.GetPoints().Modified()
 
+    #Update Glyph
+    cubeGlyph[pickedId].SetPosition(pos)
+
     renWin.Render()
+
+def MakeBoxGlyph():
+    source = vtk.vtkCubeSource()
+    source.SetCenter(0, 0, 0)
+    source.SetXLength(.6)
+    source.SetYLength(.6)
+    source.SetZLength(.6)
+    source.Update()
+
+    actor = MakeActor(source.GetOutput())
+    actor.GetProperty().SetColor(1, 0, 0)
+    actor.GetProperty().SetOpacity(.2)
+
+    return actor
     
 
     
@@ -89,6 +107,9 @@ if __name__ == "__main__":
     line.GetPointIds().SetNumberOfIds(pointBuffer.shape[0])
     for pid in range(pointBuffer.shape[0]):
         line.GetPointIds().SetId(pid, pid)
+        cube = MakeBoxGlyph()
+        cube.SetPosition(pointBuffer[pid])
+        cubeGlyph.append(cube)
     polys = vtk.vtkCellArray()
     polys.InsertNextCell(line)
     #vtkPolyData -> 3차원 오브젝트 정보를 가지고있는 객체    
@@ -102,6 +123,8 @@ if __name__ == "__main__":
     #렌더러에 오브젝트 추가
     ren.AddActor(pointActor)
     ren.AddActor(lineActor)
+    for cube in cubeGlyph:
+        ren.AddActor(cube)
 
 
     #refresh

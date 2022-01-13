@@ -44,16 +44,24 @@ class DeformableGraph():
         self.pointActor = MakeSphereActor(self.polydata)
         self.actor = MakeActor(self.polydata)
 
+        self.glyphs = []
+        for i in range(self.polydata.GetNumberOfPoints()):
+            glyph = MakeBoxGlyph()
+            glyph.SetPosition(self.polydata.GetPoints().GetPoint(i))
+            self.glyphs.append(glyph)
+
+
     def addToRenderer(self, renderer):
         renderer.AddActor(self.pointActor)
         renderer.AddActor(self.actor)
+        
+        for glyph in self.glyphs:
+            renderer.AddActor(glyph)
 
 
-    def updatePoint(self, idx, pos):
-        print(idx, pos)
-
+    def updatePoint(self, idx, pos):        
         self.polydata.GetPoints().SetPoint(idx, pos[0], pos[1], pos[2])
         self.polydata.GetPoints().Modified()
 
     def modified(self):
-        print("Solve Dynamics!")
+        print("Solve Dynamics!, update Glyphs")

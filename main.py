@@ -1,7 +1,6 @@
 import vtk
 from vtk.util import numpy_support
 import numpy as np
-import math
 import utils
 
 
@@ -52,7 +51,11 @@ def MouseMoveCallback(obj, r):
 def MouseReleaseCallback(obj, e):    
     global pickedId    
     pickedId = -1    
-    transBuffer = np.zeros_like(pointBuffer)
+
+    targetGraph.modified()
+    
+
+
 
 if __name__ == "__main__":    
 

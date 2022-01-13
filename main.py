@@ -52,7 +52,8 @@ def MouseReleaseCallback(obj, e):
     global pickedId    
     pickedId = -1    
 
-    targetGraph.modified()
+    targetGraph.modified() # modified solves dynamics!
+    renWin.Render()
     
 
 

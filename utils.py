@@ -1,3 +1,4 @@
+from distutils.log import error
 import vtk
 from vtk.util import numpy_support
 import autograd.numpy as np
@@ -55,7 +56,7 @@ class DeformableGraph():
         # self.polydata.ShallowCopy(polydata)
         self.pointActor = MakeSphereActor(self.polydata)
         self.actor = MakeActor(self.polydata)
-        self.constraints = dict()
+        self.constraints = {i:self.pointBuffer[i] for i in range(self.n_point)}
         self.glyphs = []
         for i in range(self.polydata.GetNumberOfPoints()):
             glyph = MakeBoxGlyph()
@@ -86,7 +87,6 @@ class DeformableGraph():
         self.pointBuffer[idx][0] = pos[0]
         self.pointBuffer[idx][1] = pos[1]
         self.pointBuffer[idx][2] = pos[2]
-        self.constraints = dict()
         self.constraints[idx] = pos
         self.polydata.GetPoints().Modified()
 
@@ -99,6 +99,7 @@ class DeformableGraph():
         deformed_points = []
         # there should be a better than just looping through...
         for base_inx in range(self.n_point):
+
             p = self.pointBuffer[base_inx]
             # Equation (2)
             deformed_point = None
@@ -110,7 +111,9 @@ class DeformableGraph():
                 if type(deformed_point) == type(None):
                     deformed_point = TMP_WEIGHT * self.calculateDeformationGraph(p, g_j, R_j, T_j)
                 else:
-                    deformed_point += TMP_WEIGHT * self.calculateDeformationGraph(p, g_j, R_j, T_j)  
+                    each_deform = TMP_WEIGHT * self.calculateDeformationGraph(p, g_j, R_j, T_j)  
+                    deformed_point += each_deform
+
             deformed_points.append(deformed_point)
         return deformed_points
 
@@ -123,12 +126,16 @@ class DeformableGraph():
         deformed_points = self.getDeformedPosition(R, T)
 
         # equation (8)
-        final_loss = np.zeros(3)
+        final_loss = 0
         for vert_inx, pos_const in self.constraints.items():
+
             err = deformed_points[vert_inx] - pos_const
-            final_loss += err
+            # print("vert_inx", vert_inx)
+            # print("deformed_points[vert_inx]", deformed_points[vert_inx])
+            # print("pos_const", pos_const)
+            final_loss += np.inner(err,err)
         
-        return np.inner(final_loss,final_loss)
+        return final_loss
 
 
 
@@ -146,112 +153,57 @@ class DeformableGraph():
         initial_guess[:9*self.n_point] = initial_guess_R
 
         del_inital_guess = initial_guess.copy() + self.delta
-        # initial_guess_T = np.tile(np.zeros(3), (self.n_point, 1)).reshape(-1)
-        # initial_guess = np.concat(initial_guess_R, initial_guess_T)
 
-        # get what changed
-        grad_objective = grad(self.objective_con)
-        print("DELTA_X---------------------------------")
-        # print(del_inital_guess - initial_guess)
-        delta_x = del_inital_guess - initial_guess
-        print("DELTA_GRAD---------------------------------")
-        # print(grad_objective(del_inital_guess) - grad_objective(initial_guess))
-        delta_grad = grad_objective(del_inital_guess) - grad_objective(initial_guess)
-        self.hess_manager.update(delta_x, delta_grad)
-        hess = self.hess_manager.get_matrix()
-
-
-
-
-
+        import time
+        start = time.time()
+        val = optimize.minimize(self.objective_con, initial_guess, args=(), method='BFGS')
+        end = time.time()
+        print("optimization time:", end - start)
+        deformed_R_lst = val.x[:9*self.n_point].reshape(self.n_point, 3, 3)
+        deformed_T_lst = val.x[9*self.n_point:].reshape(self.n_point, 3)
         from pdb import set_trace as st
         st()
-        asdf
-    
+        # # print("point_BUFFER-----",self.pointBuffer)
+        # print("OPTIMIZED VALUE-----",self.getDeformedPosition(deformed_R_lst, deformed_T_lst))
+        # # for j, (R_j, T_j) in enumerate(zip(deformed_R_lst, deformed_T_lst)):
+        # #     print("point",j, self.pointBuffer[j])
+        # #     print("ROATION------")
+        # #     print(R_j)
+        # #     print("TRANSLATION------")
+        # #     print(T_j)
+        # #     print("DEFORMED...")
+        # #     pos = self.polydata.GetPoints().GetPoint(j)
+
+        # # self.objective_con(initial_guess)
 
 
-
-        prob_dim = initial_guess.shape[0]
-
-
+        # print(deformed_R_lst.shape)
+        # print(deformed_T_lst.shape)
 
 
+        deformed_position = self.getDeformedPosition(deformed_R_lst, deformed_T_lst)
 
-        
-        print(initial_guess.shape)
-        asdf
-
-        optimize
-
-
-
-
-        # J = np.zeros((len(self.glyphs)*12, 1), dtype=np.float64)
-        # f = np.zeros((len(self.glyphs)*12, 1), dtype=np.float64)
-
-        # for j, glyph in enumerate(self.glyphs):
-        #     matrix = glyph.GetUserMatrix() 
-        #     print("i------------------")
-        #     print(matrix)
-        #     J[j*12+0] = matrix.GetElement(0, 0)
-        #     J[j*12+1] = matrix.GetElement(1, 0)
-        #     J[j*12+2] = matrix.GetElement(2, 0)
-
-        #     J[j*12+3] = matrix.GetElement(0, 1)
-        #     J[j*12+4] = matrix.GetElement(1, 1)
-        #     J[j*12+5] = matrix.GetElement(2, 1)
-
-        #     J[j*12+6] = matrix.GetElement(0, 2)
-        #     J[j*12+7] = matrix.GetElement(1, 2)
-        #     J[j*12+8] = matrix.GetElement(2, 2)
-
-        #     box_pos = np.array([matrix.GetElement(0, 3), matrix.GetElement(1, 3), matrix.GetElement(2, 3)], dtype=np.float64 )
-
-        #     J[j*12+9] = box_pos[0]
-        #     J[j*12+10] = box_pos[1]
-        #     J[j*12+11] = box_pos[2]
-
+        #Update Glyphs
+        for j, glyph in enumerate(self.glyphs):
             
-        #     # equation 1 make current position -> center
-        #     # trans = self.pointBuffer[i] - box_pos
-        #     # f[j*12+9] = trans[0] * 0.001
-        #     # f[j*12+10] = trans[1]* 0.001
-        #     # f[j*12+11] = trans[2]
-        # asdf
-        # print(i, ":", np.sum(f))
-        
-        # Jt = J.transpose()        
-        # JtJ = np.matmul(J , Jt)
-        # eye = np.identity(JtJ.shape[0])
-        # JtJ += eye * 0.00000001 # Prevent Singular?
-        # Jtf = -J*f
-            
-        
-        # # # #Solve Dynamics
-        # deltas = np.linalg.solve(JtJ, Jtf )        
+            matrix = glyph.GetUserMatrix() 
+            # matrix.SetElement(0, 0, deformed_R_lst[j, 0, 0])
+            # matrix.SetElement(1, 0, deformed_R_lst[j, 0, 1])
+            # matrix.SetElement(2, 0, deformed_R_lst[j, 0, 2])
 
+            # matrix.SetElement(0, 1, deformed_R_lst[j, 1, 0])
+            # matrix.SetElement(1, 1, deformed_R_lst[j, 1, 1])
+            # matrix.SetElement(2, 1, deformed_R_lst[j, 1, 2])
 
-        # updateJ = J + deltas
-        # #Update Glyphs
-        # for j, glyph in enumerate(self.glyphs):
-        #     matrix = glyph.GetUserMatrix() 
-        #     matrix.SetElement(0, 0, updateJ[j*12+0])
-        #     matrix.SetElement(1, 0, updateJ[j*12+1])
-        #     matrix.SetElement(2, 0, updateJ[j*12+2])
+            # matrix.SetElement(0, 2, deformed_R_lst[j, 2, 0])
+            # matrix.SetElement(1, 2, deformed_R_lst[j, 2, 1])
+            # matrix.SetElement(2, 2, deformed_R_lst[j, 2, 2])
 
-        #     matrix.SetElement(0, 1, updateJ[j*12+3])
-        #     matrix.SetElement(1, 1, updateJ[j*12+4])
-        #     matrix.SetElement(2, 1, updateJ[j*12+5])
+            matrix.SetElement(0, 3, deformed_position[j][0])
+            matrix.SetElement(1, 3, deformed_position[j][1])
+            matrix.SetElement(2, 3, deformed_position[j][2])
 
-        #     matrix.SetElement(0, 2, updateJ[j*12+6])
-        #     matrix.SetElement(1, 2, updateJ[j*12+7])
-        #     matrix.SetElement(2, 2, updateJ[j*12+8])
-
-        #     matrix.SetElement(0, 3, updateJ[j*12+9])
-        #     matrix.SetElement(1, 3, updateJ[j*12+10])
-        #     matrix.SetElement(2, 3, updateJ[j*12+11])
-
-        #     #Update Point Position Too
+            #Update Point Position Too
             
 
     #untill converge

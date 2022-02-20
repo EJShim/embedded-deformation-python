@@ -183,7 +183,7 @@ class DeformableGraph():
             for n in range(self.n_node):
                 if self.edges[j][n]:
                     # equation (7)
-                    err = self.rot[j].reshape(3,3)@(self.node[n] - self.node[j]) + self.node[j] + self.trans[j] - (self.node[n] - self.trans[n])
+                    err = self.rot[j].reshape(3,3)@(self.node[n] - self.node[j]) + self.node[j] + self.trans[j] - (self.node[n] + self.trans[n])
                     final_loss += np.inner(err, err)
 
 
@@ -220,9 +220,9 @@ class DeformableGraph():
                 if(self.edges[j][k]):
                     for i in range(3):
                         fx[inx] = (self.rot[j][i]*(self.node[k][0]-self.node[j][0])
-                                                +self.rot[j][i+3]*(self.node[k][1]-self.node[j][1])
-                                                +self.rot[j][i+6]*(self.node[k][2]-self.node[j][2])
-                                                +self.node[j][i]+self.trans[j][i]-self.node[k][i]-self.trans[k][i])*np.sqrt(W_REG); inx += 1
+                                +self.rot[j][i+3]*(self.node[k][1]-self.node[j][1])
+                                +self.rot[j][i+6]*(self.node[k][2]-self.node[j][2])
+                                +self.node[j][i]+self.trans[j][i]-self.node[k][i]-self.trans[k][i])*np.sqrt(W_REG); inx += 1
 
         ###########################3
         # debug

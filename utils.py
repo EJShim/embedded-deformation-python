@@ -133,9 +133,7 @@ class DeformableGraph():
     def computeWeights(self, vertex):
         # Equation (4)
         # compute k+1 nearestNode(don't consider the node itself)
-
-        from pdb import set_trace as st
-        st()
+        # return {"nearest_inx":"weight"}
         dist = np.linalg.norm((vertex - self.node), axis=1)
         arg_dist = np.argsort(dist)[:self.k_nearest+1]
         sorted_dist = dist[arg_dist]
@@ -147,24 +145,18 @@ class DeformableGraph():
         weights = dict()
         for i, dist_inx in enumerate(arg_dist):
             weights[dist_inx] = w_j_v_i[i]
-
         return weights
 
     def getDeformedPosition(self, vertex_inx):
         pos = np.zeros(3)
-        for j in range(self.n_node):
-            # calculate weights
-            # TODO: currently, we only have node; so we can say vertex_inx == node_inx
-            vertex_pos = self.node[vertex_inx]
-            weight_info = self.computeWeights(vertex_pos)
-
-            for inx, weight in weight_info.items():
-                tmp = vertex_pos - self.node[inx]
-                # Equation (1)
-
-
-
-                pos += weight * (self.rot[j].reshape(3,3)@tmp + self.node[j]+self.trans[j]-(self.node[inx]+self.trans[inx]))
+        # calculate weights
+        # TODO: currently, we only have node; so we can say vertex_inx == node_inx
+        vertex_pos = self.node[vertex_inx]
+        weight_info = self.computeWeights(vertex_pos)
+        for inx, weight in weight_info.items():
+            tmp = vertex_pos - self.node[inx]
+            # Equation (1)
+            pos += weight * (self.rot[inx].reshape(3,3)@tmp + self.node[inx]+self.trans[inx])
 
         return pos
 
@@ -177,8 +169,8 @@ class DeformableGraph():
         final_loss = 0
 
         for vert_inx, pos_const in self.constraints.items():
-            deformed_points = self.getDeformedPosition(vert_inx)
 
+            deformed_points = self.getDeformedPosition(vert_inx)
             err = deformed_points - pos_const
             final_loss += np.inner(err,err)
         return final_loss
@@ -209,10 +201,11 @@ class DeformableGraph():
         return final_loss
 
     def computeF(self):
-        fx = np.zeros(self.n_node*6+self.n_edge*6+3*len(self.constraints))
+
+        fx = np.zeros(int(self.n_node*6+self.n_edge*6+3*len(self.constraints)))
         inx = 0
 
-        # rot
+        # # rot
         for j in range(self.n_node):
             fx[inx] = (self.rot[j][0]*self.rot[j][3]+self.rot[j][1]*self.rot[j][4]+self.rot[j][2]*self.rot[j][5])*np.sqrt(W_ROT); inx += 1
             fx[inx] = (self.rot[j][0]*self.rot[j][6]+self.rot[j][1]*self.rot[j][7]+self.rot[j][2]*self.rot[j][8])*np.sqrt(W_ROT); inx += 1
@@ -231,18 +224,21 @@ class DeformableGraph():
                                                 +self.rot[j][i+6]*(self.node[k][2]-self.node[j][2])
                                                 +self.node[j][i]+self.trans[j][i]-self.node[k][i]-self.trans[k][i])*np.sqrt(W_REG); inx += 1
 
+        ###########################3
+        # debug
+        ###############################
+        # inx = 84
         # con
-        for vert_inx, pos_con in enumerate(self.constraints):
+        for vert_inx, pos_con in self.constraints.items():
             # TODO every vertex is just a node.
-            
-            deformed_v = self.getDeformedPosition(self.node[vert_inx])
+
+            deformed_v = self.getDeformedPosition(vert_inx)
             for i in range(3):
-                fx[inx] = (deformed_v[i] - pos_con[i]) * np.sqrt(W_CON)
-        
+                fx[inx] = (deformed_v[i] - pos_con[i]) * np.sqrt(W_CON); inx += 1
         return fx
 
     def computeJ(self):
-        Jacobi = np.zeros((self.n_node*6+self.n_edge*6+3*len(self.constraints), 12*self.n_nodes))
+        Jacobi = np.zeros((int(self.n_node*6+self.n_edge*6+3*len(self.constraints)), 12*self.n_node))
         inx = 0
 
         # rot
@@ -261,7 +257,6 @@ class DeformableGraph():
                 Jacobi[inx, i+12*j] = 2*self.rot[j][i]*np.sqrt(W_ROT)
 
             inx += 1
-
         # reg
         for j in range(self.n_node):
             for k in range(self.n_node):
@@ -272,27 +267,40 @@ class DeformableGraph():
                         Jacobi[inx,12*j+i+9] = np.sqrt(W_REG)
                         Jacobi[inx,12*k+i+9] = -np.sqrt(W_REG)
                         inx+=1
-        
+        # inx = 84
+
         # Econ
         for vert_inx, pos_con in self.constraints.items():
-            weight_info = self.computeWeights(pos_con)
+
+            weight_info = self.computeWeights(self.node[vert_inx])
             for i in range(3):
-                for inx, weight in weight_info.items():
+                for vert_inx, weight in weight_info.items():
                     for ii in range(3):
-                        Jacobi[inx, ii*3+i+12*inx] = weight*(pos_con[ii]-self.node[inx][ii])*np.sqrt(W_CON)
+
+                        Jacobi[inx, ii*3+i+12*vert_inx] = weight*(pos_con[ii]-self.node[vert_inx][ii])*np.sqrt(W_CON)
+                    Jacobi[inx, 9+i+12*vert_inx] = weight*np.sqrt(W_CON)
                 inx += 1
-        
         return Jacobi
 
 
     def objective(self, x):
 
         self.updateMat(x)
+
+
+        
         L_rot = self.objective_rot()
         L_reg = self.objective_reg()
         L_con = self.objective_con()
         print(f"L_rot: {L_rot}, L_reg: {L_reg}, L_con: {L_con}")
         return W_ROT*L_rot + W_REG*L_reg + W_CON*L_con
+    
+        L_rot = self.objective_rot()
+        L_con = self.objective_con()
+        print(f"L_rot: {L_rot}, L_con: {L_con}")
+
+        return W_ROT*L_rot + W_CON*L_con
+        # return L_con
 
     def updateMat(self, x):
         for j, glyph in enumerate(self.glyphs):
@@ -313,10 +321,10 @@ class DeformableGraph():
                 self.rot[j][i] = x[j*12+i]
             for i in range(3):
                 self.trans[j][i] = x[j*12+9+i]
-
-            matrix.SetElement(0, 3, x[j*12+9])
-            matrix.SetElement(1, 3, x[j*12+10])
-            matrix.SetElement(2, 3, x[j*12+11])
+            pos = self.getDeformedPosition(j)
+            matrix.SetElement(0, 3, pos[0])
+            matrix.SetElement(1, 3, pos[1])
+            matrix.SetElement(2, 3, pos[2])
 
 
     def modified(self):        
@@ -329,23 +337,31 @@ class DeformableGraph():
             x[j*12:j*12+9] = self.rot[j].reshape(-1)
             x[j*12+9:j*12+12] = self.trans[j]
 
-        obj_updated = self.objective(x)
+        obj, obj_updated = 0, self.objective(x)
+        prev_position = x.copy()
 
         for i in range(10):
             if abs(obj_updated - obj) < self.tol:
-                return
+                print("optimization finished!")
+                break
 
             obj = obj_updated
             delta = self.computeF()
             # 6*dg.n_nodes+6*dg.n_edges+3*p x 12*self.n_nodes
             J = self.computeJ() # 
-            JtJ = J.t@J
+            JtJ = J.T@J
+
             # prevent singulaity
-            JtJ += 1e-6*np.eyes(1e-10)
-            c, low = cho_factor(JtJ)
-            updated_delta = cho_solve((c, low), -J*delta)
+            JtJ += 1e-6*np.eye(12*self.n_node)
+            mat, low = cho_factor(JtJ)
+            updated_delta = cho_solve((mat, low), -J.T@delta)
             x += updated_delta
             obj_updated = self.objective(x)
+        
+            for i, (pos_prev, pos_curr) in enumerate(zip(prev_position.reshape(self.n_node,-1), x.reshape(self.n_node,-1))):        
+                print(f"{i} Node", self.node[i])
+                print("rot:",pos_curr[:9].reshape(3,3),"\n","trans",pos_curr[9:])
+
 
         # now change position
 

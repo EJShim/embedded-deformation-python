@@ -1,3 +1,4 @@
+from multiprocessing.sharedctypes import Value
 from typing import final
 import vtk
 from vtk.util import numpy_support
@@ -7,7 +8,7 @@ from scipy.linalg import cho_factor, cho_solve
 
 
 # THIS CODE IS COMING FROM https://github.com/Hunger720/Embedded_Deformation_for_Shape_Manipulation/blob/master
-W_ROT = 1
+W_ROT = 5
 W_REG = 10
 W_CON = 100
 
@@ -53,7 +54,7 @@ def userMat2RG(user_matrix):
     return R, g
 
 class DeformableGraph():
-    def __init__(self, polydata, k_nearest=3, tol=1e-3):        
+    def __init__(self, polydata, k_nearest=3, tol=1e-6):        
         
         self.polydata = polydata
         self.pointBuffer = numpy_support.vtk_to_numpy(polydata.GetPoints().GetData())
@@ -63,7 +64,7 @@ class DeformableGraph():
         self.pointActor = MakeSphereActor(self.polydata)
         self.actor = MakeActor(self.polydata)
         self.constraints = dict()#{i:self.pointBuffer[i] for i in range(self.n_node)}
-
+        self.constraints[0] = self.pointBuffer[0]
         self.glyphs = []
         self.tol = tol
         self.k_nearest = k_nearest
@@ -98,9 +99,12 @@ class DeformableGraph():
         for i in range(self.n_node):
 
             k_nearest = self.findNearestNodes(i)
-            for j in k_nearest:
-                edges[i][j] = True
-                edges[j][i] = True
+
+            for j in range(self.k_nearest):
+                # don't consider node itself.
+                for jj in range(j+1, self.k_nearest):
+                    edges[k_nearest[jj]][k_nearest[j]] = True
+                    edges[k_nearest[j]][k_nearest[jj]] = True
         self.edges = edges
 
         # number of edge
@@ -115,7 +119,6 @@ class DeformableGraph():
         self.pointBuffer[idx][0] = pos[0]
         self.pointBuffer[idx][1] = pos[1]
         self.pointBuffer[idx][2] = pos[2]
-        self.constraints = dict()
         self.constraints[idx] = pos
         self.polydata.GetPoints().Modified()
 
@@ -126,8 +129,8 @@ class DeformableGraph():
             dist.append(np.linalg.norm(self.node[base_inx] - self.node[j], ord=2))
         
         sorted_dist = np.argsort(dist)
-        # don't consider node itself.
-        return sorted_dist[1:self.k_nearest+1]
+
+        return sorted_dist[:self.k_nearest]
 
 
     def computeWeights(self, vertex):
@@ -141,7 +144,7 @@ class DeformableGraph():
 
         w_j_v_i = (1-sorted_dist/max_dist)**2
         # normalize to 1
-        w_j_v_i /= np.linalg.norm(w_j_v_i)
+        w_j_v_i /= np.linalg.norm(w_j_v_i, ord=1)
         weights = dict()
         for i, dist_inx in enumerate(arg_dist):
             weights[dist_inx] = w_j_v_i[i]
@@ -151,7 +154,11 @@ class DeformableGraph():
         pos = np.zeros(3)
         # calculate weights
         # TODO: currently, we only have node; so we can say vertex_inx == node_inx
-        vertex_pos = self.node[vertex_inx]
+        if True:
+            vertex_pos = self.node[vertex_inx]
+        else:
+            raise NotImplementedError("vertex_pos = self.point_inx[vertex_inx]")
+
         weight_info = self.computeWeights(vertex_pos)
         for inx, weight in weight_info.items():
             tmp = vertex_pos - self.node[inx]

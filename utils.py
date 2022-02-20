@@ -62,7 +62,7 @@ class DeformableGraph():
         # self.polydata.ShallowCopy(polydata)
         self.pointActor = MakeSphereActor(self.polydata)
         self.actor = MakeActor(self.polydata)
-        self.constraints = dict() #{i:self.pointBuffer[i] for i in range(self.n_node)}
+        self.constraints = dict()#{i:self.pointBuffer[i] for i in range(self.n_node)}
 
         self.glyphs = []
         self.tol = tol
@@ -322,6 +322,7 @@ class DeformableGraph():
             for i in range(3):
                 self.trans[j][i] = x[j*12+9+i]
             pos = self.getDeformedPosition(j)
+            print("NODE", self.node[j], pos)
             matrix.SetElement(0, 3, pos[0])
             matrix.SetElement(1, 3, pos[1])
             matrix.SetElement(2, 3, pos[2])
@@ -340,7 +341,7 @@ class DeformableGraph():
         obj, obj_updated = 0, self.objective(x)
         prev_position = x.copy()
 
-        for i in range(10):
+        for i in range(20):
             if abs(obj_updated - obj) < self.tol:
                 print("optimization finished!")
                 break
@@ -358,9 +359,15 @@ class DeformableGraph():
             x += updated_delta
             obj_updated = self.objective(x)
         
-            for i, (pos_prev, pos_curr) in enumerate(zip(prev_position.reshape(self.n_node,-1), x.reshape(self.n_node,-1))):        
-                print(f"{i} Node", self.node[i])
-                print("rot:",pos_curr[:9].reshape(3,3),"\n","trans",pos_curr[9:])
+        # it is inefficient.
+        for j in range(len(self.glyphs)):
+            pos = self.getDeformedPosition(j)
+            self.node[j] = pos
+            self.updatePoint(j, pos)
+        
+        # for i, (pos_prev, pos_curr) in enumerate(zip(prev_position.reshape(self.n_node,-1), x.reshape(self.n_node,-1))):        
+        #     print(f"{i} Node", self.node[i])
+        #     print("prev:",pos_prev[9:],"\n","curr",pos_curr[9:])
 
 
         # now change position

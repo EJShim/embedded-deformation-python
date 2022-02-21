@@ -8,8 +8,8 @@ from scipy.linalg import cho_factor, cho_solve
 
 
 # THIS CODE IS COMING FROM https://github.com/Hunger720/Embedded_Deformation_for_Shape_Manipulation/blob/master
-W_ROT = 5
-W_REG = 10
+W_ROT = 15
+W_REG = 20
 W_CON = 100
 
 def MakeSphereActor(polydata):

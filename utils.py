@@ -163,8 +163,16 @@ class DeformableGraph():
         for inx, weight in weight_info.items():
             tmp = vertex_pos - self.node[inx]
             # Equation (1)
-            pos += weight * (self.rot[inx].reshape(3,3)@tmp + self.node[inx]+self.trans[inx])
-
+            # for i in range(3):
+            #     pos[i] += weight*(self.rot[inx][i]*tmp[0] + self.rot[inx][i+3]*tmp[1] + self.rot[inx][i+6]*tmp[2]+self.node[inx][i]+self.trans[inx][i])
+            pos += weight * (self.rot[inx].reshape(3,3).T@tmp + self.node[inx]+self.trans[inx])
+            # if np.allclose(pos, pos_copy):
+            #     print("POS1",pos)
+            #     print("POS2", pos_copy)
+            #     print("-------------------------")
+            # else:
+            #     from pdb import set_trace as st
+            #     st()
         return pos
 
     def objective_con(self):
@@ -190,7 +198,7 @@ class DeformableGraph():
             for n in range(self.n_node):
                 if self.edges[j][n]:
                     # equation (7)
-                    err = self.rot[j].reshape(3,3)@(self.node[n] - self.node[j]) + self.node[j] + self.trans[j] - (self.node[n] + self.trans[n])
+                    err = self.rot[j].reshape(3,3).T@(self.node[n] - self.node[j]) + self.node[j] + self.trans[j] - (self.node[n] + self.trans[n])
                     final_loss += np.inner(err, err)
 
 

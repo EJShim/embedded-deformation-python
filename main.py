@@ -1,88 +1,83 @@
+from distutils.archive_util import make_archive
 import vtk
+import argparse
 from vtk.util import numpy_support
 import numpy as np
 import utils
+import igl
 
-
-#기본 셋업
-iren = vtk.vtkRenderWindowInteractor()
-interactorStyle = vtk.vtkInteractorStyleImage()
-iren.SetInteractorStyle(interactorStyle)
-renWin = vtk.vtkRenderWindow()
-iren.SetRenderWindow(renWin)
-ren = vtk.vtkRenderer()
-renWin.AddRenderer(ren)
-ren.SetBackground(0.1, 0.2, 0.4)
-renWin.SetSize(1000, 1000)
-
-
-pickedId = -1
-
-targetGraph = None
-
-def MouseClickCallback(obj, e):    
-    global pickedId
-    
-    
-    picker = obj.GetPicker()
-    eventPosition = obj.GetEventPosition()
-    picker.Pick(float(eventPosition[0]),float(eventPosition[1]),0.0,ren)    
-    pickedId = picker.GetPointId()    
-
-    
-
-def MouseMoveCallback(obj, r):
-    
-    if pickedId == -1 : return    
-    picker = obj.GetPicker()
-    eventPosition = obj.GetEventPosition()
-    picker.Pick(float(eventPosition[0]),float(eventPosition[1]),0.0,ren)    
-
-    #Update Point
-    pos = picker.GetPickPosition()
-
-    targetGraph.updatePoint(pickedId, pos)
-
-    renWin.Render()
 
 
     
 
-def MouseReleaseCallback(obj, e):    
-    global pickedId    
-    pickedId = -1    
+def make_polydata(V, F) -> vtk.vtkPolyData:
+    V = np.array(V, dtype=np.float32).copy()
+    F = np.array(F, dtype=np.int32).copy()
 
-    targetGraph.modified() # modified solves dynamics!
-    renWin.Render()
+
+    points = vtk.vtkPoints()
+    points_data = numpy_support.numpy_to_vtk(V)
+    points.SetData(points_data)
+
+    triangles = vtk.vtkCellArray()
+    # cell_data = numpy_support.numpy_to_vtk(F.ravel()) ## not working.... outside of this function
+    # triangles.SetData(3, cell_data)
+    for face in F:
+        triangle = vtk.vtkTriangle()
+        triangle.GetPointIds().SetId(0, face[0])
+        triangle.GetPointIds().SetId(1, face[1])
+        triangle.GetPointIds().SetId(2, face[2])
+        triangles.InsertNextCell(triangle)
+
+
+    polydata = vtk.vtkPolyData()
+    polydata.SetPoints(points)
+    polydata.SetPolys(triangles)
+
+    return polydata
+
+def read_polydata(path: str) ->vtk.vtkPolyData:
     
+    ext = path.split(".")[-1]
+
+    if ext == "off":
+        # Read Data
+        V, F = igl.read_triangle_mesh(path)
+
+        # Make vtkpolydata
+        poly = make_polydata(V, F)
+
+        
+        return poly
+    else:
+        raise("only .off file is supoprted for noaw")
+
 
 
 
 if __name__ == "__main__":    
+    # Argument Parser
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--input', type=str, default='resources/decimated-knight.off')
+    args = parser.parse_args()
 
-    pointBuffer = np.array([
-        [1, 0, 0],
-        [2, 0, 0],
-        [3, 0, 0],
-        [4, 0, 0],
-        [5, 0, 0],        
-    ], dtype=np.float64)
-    polydata = vtk.vtkPolyData()
-    points = vtk.vtkPoints()
-    pointArray = numpy_support.numpy_to_vtk(pointBuffer)
-    points.SetData(pointArray)
+    #기본 셋업
+    iren = vtk.vtkRenderWindowInteractor()
+    interactorStyle = vtk.vtkInteractorStyleTrackballCamera()
+    iren.SetInteractorStyle(interactorStyle)
+    renWin = vtk.vtkRenderWindow()
+    iren.SetRenderWindow(renWin)
+    ren = vtk.vtkRenderer()
+    renWin.AddRenderer(ren)
+    ren.SetBackground(0.1, 0.2, 0.4)
+    renWin.SetSize(1000, 1000)
 
-    line = vtk.vtkPolyLine()
-    line.GetPointIds().SetNumberOfIds(pointBuffer.shape[0])
-    for pid in range(pointBuffer.shape[0]):
-        line.GetPointIds().SetId(pid, pid)        
-    polys = vtk.vtkCellArray()
-    polys.InsertNextCell(line)    
-    polydata.SetPoints(points)
-    polydata.SetLines(polys)
+    polydata = read_polydata(args.input)
 
-    targetGraph = utils.DeformableGraph(polydata)
-    targetGraph.addToRenderer(ren)
+    actor = utils.MakeActor(polydata=polydata)
+    
+    ren.AddActor(actor)
+    ren.ResetCamera()
 
 
 
@@ -90,15 +85,5 @@ if __name__ == "__main__":
     ren.ResetCamera()
     renWin.Render()
 
-    #Add Interaction    
-    picker = vtk.vtkPointPicker()
-    picker.SetTolerance(0.01)
-    iren.SetPicker(picker)
-
-    iren.AddObserver(vtk.vtkCommand.LeftButtonPressEvent, MouseClickCallback)    
-    iren.AddObserver(vtk.vtkCommand.InteractionEvent, MouseMoveCallback)
-    iren.AddObserver(vtk.vtkCommand.EndInteractionEvent , MouseReleaseCallback)
-
     #렌더러 창 실행
-    iren.Initialize()
     iren.Start()

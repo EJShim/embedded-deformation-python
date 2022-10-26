@@ -79,34 +79,32 @@ class DeformableGraph():
     def modified(self):        
 
 
-        for i in range(10):
-            J = np.zeros((len(self.glyphs)*12, 1), dtype=np.float64)
-            f = np.zeros((len(self.glyphs)*12, 1), dtype=np.float64)
+        for i in range(10):            
             for j, glyph in enumerate(self.glyphs):
                 matrix = glyph.GetUserMatrix() 
-                J[j*12+0] = matrix.GetElement(0, 0)
-                J[j*12+1] = matrix.GetElement(1, 0)
-                J[j*12+2] = matrix.GetElement(2, 0)
+                # J[j*12+0] = matrix.GetElement(0, 0)
+                # J[j*12+1] = matrix.GetElement(1, 0)
+                # J[j*12+2] = matrix.GetElement(2, 0)
 
-                J[j*12+3] = matrix.GetElement(0, 1)
-                J[j*12+4] = matrix.GetElement(1, 1)
-                J[j*12+5] = matrix.GetElement(2, 1)
+                # J[j*12+3] = matrix.GetElement(0, 1)
+                # J[j*12+4] = matrix.GetElement(1, 1)
+                # J[j*12+5] = matrix.GetElement(2, 1)
 
-                J[j*12+6] = matrix.GetElement(0, 2)
-                J[j*12+7] = matrix.GetElement(1, 2)
-                J[j*12+8] = matrix.GetElement(2, 2)
+                # J[j*12+6] = matrix.GetElement(0, 2)
+                # J[j*12+7] = matrix.GetElement(1, 2)
+                # J[j*12+8] = matrix.GetElement(2, 2)
 
                 pos = np.array([matrix.GetElement(0, 3), matrix.GetElement(1, 3), matrix.GetElement(2, 3)], dtype=np.float64 )
-                J[j*12+9] = pos[0]
-                J[j*12+10] = pos[1]
-                J[j*12+11] = pos[2]
+                # J[j*12+9] = pos[0]
+                # J[j*12+10] = pos[1]
+                # J[j*12+11] = pos[2]
 
 
                 #Econ???
                 trans = np.array(self.polydata.GetPoint(j)) - pos
-                f[j*12+9] = trans[0] * 0.001
-                f[j*12+10] = trans[1]* 0.001
-                f[j*12+11] = trans[2]
+                # f[j*12+9] = trans[0] * 0.001
+                # f[j*12+10] = trans[1]* 0.001
+                # f[j*12+11] = trans[2]
             
             print(i, ":", np.sum(f))
             

@@ -1,104 +1,91 @@
 import vtk
-from vtk.util import numpy_support
+import igl
+from ref import build_tet_mesh, build_triangle_mesh, make_actor
+from ref import compute_biharmonic
 import numpy as np
-import utils
+from vtk.util import numpy_support
 
 
-#기본 셋업
-iren = vtk.vtkRenderWindowInteractor()
-interactorStyle = vtk.vtkInteractorStyleImage()
-iren.SetInteractorStyle(interactorStyle)
-renWin = vtk.vtkRenderWindow()
-iren.SetRenderWindow(renWin)
-ren = vtk.vtkRenderer()
-renWin.AddRenderer(ren)
-ren.SetBackground(0.1, 0.2, 0.4)
-renWin.SetSize(1000, 1000)
+def make_tet_actor(tet):
+    mapper = vtk.vtkDataSetMapper()
+    mapper.SetInputData(tet)
+    actor = vtk.vtkActor()
+    actor.SetMapper(mapper)
+    return actor
+
+if __name__ == "__main__":
+    iren = vtk.vtkRenderWindowInteractor()
+    iren.SetInteractorStyle(vtk.vtkInteractorStyleTrackballCamera())
+    renWin = vtk.vtkRenderWindow()
+    iren.SetRenderWindow(renWin)
+    ren = vtk.vtkRenderer()
+    ren.SetBackground(1,1,1)
+    renWin.AddRenderer(ren)
+
+    # read tet octopus
+    Vj, t, f = igl.read_mesh("resources/octopus-high.mesh")
+    _,_,_,J = igl.remove_unreferenced(Vj, f)
+    v = Vj[J]
+    
+    # render original array
+    polydata = build_triangle_mesh(v, f)
+    actor = make_actor(polydata)
+    ren.AddActor(actor)
 
 
-pickedId = -1
-
-targetGraph = None
-
-def MouseClickCallback(obj, e):    
-    global pickedId
+    # apply decimation
+    decimate = vtk.vtkQuadricDecimation()
+    decimate.SetInputData(polydata)
+    decimate.SetTargetReduction(0.99)
+    decimate.VolumePreservationOff()
+    decimate.Update()        
+    low_polydata = decimate.GetOutput()
+    Vl = numpy_support.vtk_to_numpy( low_polydata.GetPoints().GetData())
+    low_actor = make_actor(low_polydata)
+    low_actor.SetPosition(1,0,0)
+    ren.AddActor(low_actor)
+    print("Decimation : ", v.shape,  Vl.shape)
     
     
-    picker = obj.GetPicker()
-    eventPosition = obj.GetEventPosition()
-    picker.Pick(float(eventPosition[0]),float(eventPosition[1]),0.0,ren)    
-    pickedId = picker.GetPointId()    
+    # TODO: make_tetrahedr Vj, t
+    Vj, t
+    tet = build_tet_mesh(Vj, t)
+    
+    clipPlane = vtk.vtkPlane()
+    clipPlane.SetOrigin(tet.GetCenter())
+    clipPlane.SetNormal([-1.0, -1.0, 1.0])
+    clipper = vtk.vtkClipDataSet()
+    clipper.SetClipFunction(clipPlane)
+    clipper.SetInputData(tet)
+    clipper.SetValue(0.0)
+    clipper.GenerateClippedOutputOn()
+    clipper.Update()
+    tet_actor = make_tet_actor(clipper.GetOutput())
+    tet_actor.SetPosition(1, -1, 0)
+    tet_actor.GetProperty().SetEdgeVisibility(True)
+    ren.AddActor(tet_actor)
+
+
+
+
+    # print("Calculating...")
+    # Wj = compute_biharmonic(Vl, Vj, t)
+    # W = Wj[J]
+
+    # # Reconstruction
+    # print(W.shape)
+    # Vr = np.matmul(W, Vl)
+    # recon_poly = build_triangle_mesh(Vr, f)
+    # recon_actor = make_actor(recon_poly)
+    # recon_actor.SetPosition(2, 0, 0)
+    # recon_actor.GetProperty().SetColor(1.0, 0.9, 0.9)
+    # ren.AddActor(recon_actor)
 
     
 
-def MouseMoveCallback(obj, r):
-    
-    if pickedId == -1 : return    
-    picker = obj.GetPicker()
-    eventPosition = obj.GetEventPosition()
-    picker.Pick(float(eventPosition[0]),float(eventPosition[1]),0.0,ren)    
-
-    #Update Point
-    pos = picker.GetPickPosition()
-
-    targetGraph.updatePoint(pickedId, pos)
-
-    renWin.Render()
-
-
-    
-
-def MouseReleaseCallback(obj, e):    
-    global pickedId    
-    pickedId = -1    
-
-    targetGraph.modified() # modified solves dynamics!
-    renWin.Render()
-    
 
 
 
-if __name__ == "__main__":    
-
-    pointBuffer = np.array([
-        [1, 0, 0],
-        [2, 0, 0],
-        [3, 0, 0],
-        [4, 0, 0],
-        [5, 0, 0],        
-    ], dtype=np.float64)
-    polydata = vtk.vtkPolyData()
-    points = vtk.vtkPoints()
-    pointArray = numpy_support.numpy_to_vtk(pointBuffer)
-    points.SetData(pointArray)
-
-    line = vtk.vtkPolyLine()
-    line.GetPointIds().SetNumberOfIds(pointBuffer.shape[0])
-    for pid in range(pointBuffer.shape[0]):
-        line.GetPointIds().SetId(pid, pid)        
-    polys = vtk.vtkCellArray()
-    polys.InsertNextCell(line)    
-    polydata.SetPoints(points)
-    polydata.SetLines(polys)
-
-    targetGraph = utils.DeformableGraph(polydata)
-    targetGraph.addToRenderer(ren)
-
-
-
-    #refresh
     ren.ResetCamera()
     renWin.Render()
-
-    #Add Interaction    
-    picker = vtk.vtkPointPicker()
-    picker.SetTolerance(0.01)
-    iren.SetPicker(picker)
-
-    iren.AddObserver(vtk.vtkCommand.LeftButtonPressEvent, MouseClickCallback)    
-    iren.AddObserver(vtk.vtkCommand.InteractionEvent, MouseMoveCallback)
-    iren.AddObserver(vtk.vtkCommand.EndInteractionEvent , MouseReleaseCallback)
-
-    #렌더러 창 실행
-    iren.Initialize()
     iren.Start()

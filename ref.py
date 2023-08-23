@@ -50,7 +50,7 @@ def compute_biharmonic(low_v, high_v, high_t):
     _, b, _ = igl.point_mesh_squared_distance(low_v, high_v, J)
     S = np.expand_dims(b, 1)
     
-    W = igl.biharmonic_coordinates(high_v, high_t, S, 2)
+    W = igl.biharmonic_coordinates(high_v, high_t, S, 3)
 
     return W
 
@@ -84,7 +84,7 @@ if __name__ == "__main__":
     # only surface
     W = W[high_J]
 
-    calculated_high_v = np.matmul(W, low_v_s)
+    calculated_high_v = np.dot(W, low_v_s)
     print(calculated_high_v.shape)
 
     high_poly = build_triangle_mesh(calculated_high_v, high_f)

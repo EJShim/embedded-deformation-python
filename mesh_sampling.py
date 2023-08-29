@@ -10,6 +10,8 @@ from sklearn.neighbors import NearestNeighbors
 import pymeshlab
 from pathlib import Path
 import igl
+import pyvista as pv
+import tetgen
 
 class Mesh:
     def __init__(self, v=None, f=None):
@@ -168,20 +170,34 @@ def _get_sparse_transform(faces, num_original_verts):
 
     return (new_faces, mtx)
 
+def generate_tet(mesh):
+    pv_poly = pv.PolyData(mesh.polydata)
+    tet = tetgen.TetGen(pv_poly)
+    tet.tetrahedralize(order=1, mindihedral=20, minratio=1.5)    
+    
+
+    tet_v = numpy_support.vtk_to_numpy( tet.grid.GetPoints().GetData() )
+    tet_t =  numpy_support.vtk_to_numpy( tet.grid.GetCells().GetData() )
+    tet_t = np.reshape(tet_t, (tet_t.shape[0] // 5, 5))[:,1:]
+    
+    return tet_v, tet_t
+
 def calculate_biharmonic(source, target):
-    print(source.v.shape, target.v.shape)
 
-    J = np.arange(target.v.shape[0])
-    _, b, _ = igl.point_mesh_squared_distance(source.v, target.v, J)
+    print(source.polydata.GetNumberOfPoints())
+    print(target.polydata.GetNumberOfPoints())
+
+    tet_v, tet_t = generate_tet(target)
     
-    # TODO : I think there should be no overlapping indices in b
-    print(b)
-    exit()
-    
+    a, b, c = igl.point_mesh_squared_distance(source.v,tet_v, np.arange(tet_v.shape[0]))
     S = np.expand_dims(b, 1)    
-    W = igl.biharmonic_coordinates(target.v, target.f, S, 2)
-    print(W)
 
+    W = igl.biharmonic_coordinates(tet_v, tet_t, S, 2)
+
+
+    print(W)
+        
+    exit()
     return W
     # J = np.arange(high_v.shape[0])
 
@@ -578,10 +594,20 @@ def make_actor(polydata):
 
     return actor
 
+def make_point_actor(polydata):
+    mapper = vtk.vtkOpenGLSphereMapper()
+    mapper.SetInputData(polydata)
+
+
+    actor = vtk.vtkActor()
+    actor.SetMapper(mapper)
+
+    return actor
+
 if __name__ == "__main__":    
 
     parser = argparse.ArgumentParser(description = 'Generate Transform Matrix')
-    parser.add_argument('--template', type = str,  default="resources/sample_faust.obj")
+    parser.add_argument('--template', type = str,  default="resources/faust_manifold.obj")
     parser.add_argument("--output", type=str, default = "transform")
     args = parser.parse_args()
 
@@ -594,28 +620,13 @@ if __name__ == "__main__":
     #Read Template
     templatePoly = read_polydata(args.template)
 
-    # Get offset
-    template_bounds = templatePoly.GetBounds()
-    xlen = template_bounds[1] - template_bounds[0]
-    print(templatePoly.GetNumberOfPoints())
-    print(templatePoly.GetNumberOfPolys())
-
     mesh = Mesh()
     mesh.SetPolyData(templatePoly)
 
 
+    ds_factors = [4,4,4,4]
+    D, U, F, V, M = generate_transform_matrices(mesh, ds_factors, method='planarquadric')
 
-    print("Generating Transform Matrices...")
-    ds_factors = [4, 4, 4, 4]
-    D, U, F, V, M = generate_transform_matrices(mesh, ds_factors, method='quadric')
-
-    
-    calculate_biharmonic(M[2], M[1])
-
-
-
-    # print(M[-1].v.shape, M[-2].v.shape)
-    # exit()
 
 
     iren = vtk.vtkRenderWindowInteractor()
@@ -625,49 +636,51 @@ if __name__ == "__main__":
     ren = vtk.vtkRenderer()
     renWin.AddRenderer(ren)
 
-    for i in range(len(ds_factors)+1):
-        polydata = build_polydata(V[i], F[i])
-        actor = make_actor(polydata)
-        actor.SetPosition(i*xlen, 0, 0)
-        ren.AddActor(actor)
+    xlen = templatePoly.GetBounds()
+    xlen = xlen[1] - xlen[0]
 
-    # verify D
-    v = V[0]
-    polydata = build_polydata(v, F[0])
-    actor = make_actor(polydata)
-    actor.SetPosition(0, 2*xlen, 0)
-    ren.AddActor(actor) 
-    for idx, down_transform in enumerate(D):
-        v = np.dot(down_transform.toarray(), v)
-        down_f = F[idx+1]
+    TID = 0
+    SID = 1
 
-        polydata = build_polydata(v, down_f)
-        actor = make_actor(polydata)
-        actor.SetPosition((idx+1)*xlen, 2*xlen, 0)
-        ren.AddActor(actor) 
-
-    # verify U
-    # v = V[4]
-    # polydata = build_polydata(v, F[4])
-    # actor = make_actor(polydata)
-    # actor.SetPosition(0, 4, 0)
-    # ren.AddActor(actor)
-    for i in range(4):
-        idx = 4-i-1
-        up_transform = U[idx]
-
-        v = np.dot(up_transform.toarray(), v)
-        print(v.shape)
-        up_f = F[idx]
-
-        polydata = build_polydata(v, up_f)
-        actor = make_actor(polydata)
-        actor.SetPosition((4+i+1)*xlen, 2*xlen, 0)
-        ren.AddActor(actor)
-
-    
+    # Visualize things
+    actor = make_actor(M[TID].polydata)
+    actor.SetPosition(xlen,0,0)
+    ren.AddActor(actor)
 
 
+    down_actor = make_actor(M[SID].polydata)
+    down_actor.SetPosition(0, 0, 0)
+    ren.AddActor(down_actor)
+
+
+    dist, J, c = igl.point_mesh_squared_distance(M[SID].v, M[TID].v, np.arange(M[TID].v.shape[0]))
+
+
+    print(np.min(dist), np.max(dist))
+    down_v_fit = M[TID].v[J]
+    down_polydata_fit = vtk.vtkPolyData()
+    down_polydata_fit.DeepCopy(M[SID].polydata)
+    down_polydata_fit.GetPoints().SetData( numpy_support.numpy_to_vtk(down_v_fit) )
+    down_actor = make_point_actor(down_polydata_fit)
+    down_actor.GetMapper().SetRadius(math.sqrt(xlen)/100)
+    down_actor.GetProperty().SetColor(1,0,0)
+    down_actor.SetPosition(xlen,0,0)
+    ren.AddActor(down_actor)
+
+
+    # Compute biharmonic
+    print(J.tolist())
+    exit()
+    S = np.expand_dims(J, 1)
+    W = igl.biharmonic_coordinates(M[TID].v.astype(np.float32), M[TID].f, S)
+
+    recon_v = np.dot(W, down_v_fit)
+    recon_poly = vtk.vtkPolyData()
+    recon_poly.DeepCopy(M[TID].polydata)
+    recon_poly.GetPoints().SetData(numpy_support.numpy_to_vtk(recon_v))
+    recon_actor = make_actor(recon_poly)
+    recon_actor.SetPosition(xlen*2, 0, 0)
+    ren.AddActor(recon_actor)
 
     ren.ResetCamera()
     renWin.Render()
